@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794206194987,
+      "tag": "0000_order_alarm_and_manual_payment_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794206300108,
+      "tag": "0001_restore_realtime_order_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794206437079,
+      "tag": "0002_validate_payment_before_order_processing",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794206868802,
+      "tag": "0003_restore_signup_profile_creation",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794207998114,
+      "tag": "0004_fix_place_order_delete_where",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794208041678,
+      "tag": "0005_allow_manual_payment_statuses",
+      "breakpoints": true
+    }
+  ]
+}
