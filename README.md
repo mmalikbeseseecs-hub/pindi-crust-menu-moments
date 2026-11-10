@@ -149,7 +149,7 @@ Google **Authorized JavaScript origins**.
 | Orders don't appear live in admin | Run: `alter publication supabase_realtime add table public.orders;` |
 
 ## Run on your computer
-
+yo
 ```bash
 cp .env.example .env      # fill in your Supabase values
 npm install               # or: bun install
