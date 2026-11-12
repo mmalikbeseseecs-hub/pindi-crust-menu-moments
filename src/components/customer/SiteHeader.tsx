@@ -34,6 +34,7 @@ import { useThemeStore } from "@/store/theme";
 import { useHydrated } from "@/hooks/use-hydrated";
 import { cn } from "@/lib/utils";
 import { getStaffLoginUrl } from "@/lib/deployment";
+import { useBrand } from "@/lib/site-settings";
 
 const primaryLinks = [
   { to: "/", label: "Home", icon: Home },
@@ -68,9 +69,16 @@ export function SiteHeader() {
   const mode = useThemeStore((s) => s.mode);
   const toggleMode = useThemeStore((s) => s.toggleMode);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const brand = useBrand();
+  const announcement = brand.announcementEnabled ? brand.announcement.trim() : "";
 
   return (
     <>
+      {announcement && (
+        <div className="bg-primary px-4 py-2 text-center text-xs font-semibold text-pretty text-primary-foreground sm:text-sm">
+          {announcement}
+        </div>
+      )}
       <header className="glass sticky top-0 z-40 border-b border-border/60">
         <div className="mx-auto grid max-w-7xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-2">
