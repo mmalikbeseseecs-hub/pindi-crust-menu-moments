@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Product } from "@/lib/types";
+import type { Product, ProductSize } from "@/lib/types";
 import type { AppliedPromo } from "@/lib/pricing";
 
 export type CartLine = {
@@ -14,6 +14,8 @@ export type CartLine = {
    */
   unitPrice: number;
   qty: number;
+  /** Chosen size, for items that come in sizes. */
+  size?: { id: string; name: string } | undefined;
   addOns: { id: string; name: string; price: number }[];
   notes?: string;
 };
@@ -22,7 +24,11 @@ type CartState = {
   lines: CartLine[];
   /** A promo that has been validated against the database (see validatePromoCode). */
   promo: AppliedPromo | null;
-  add: (p: Product, qty?: number, addOns?: CartLine["addOns"]) => void;
+  /**
+   * Adds an item. Items with sizes need a size; without one nothing is added
+   * and `false` is returned so the caller can ask the customer to pick.
+   */
+  add: (p: Product, qty?: number, addOns?: CartLine["addOns"], size?: ProductSize) => boolean;
   remove: (key: string) => void;
   setQty: (key: string, qty: number) => void;
   clear: () => void;
@@ -35,15 +41,17 @@ export const useCart = create<CartState>()(
     (set, get) => ({
       lines: [],
       promo: null,
-      add: (p, qty = 1, addOns = []) => {
-        const key = `${p.id}::${addOns
+      add: (p, qty = 1, addOns = [], size) => {
+        const chosen = size ? p.sizes.find((s) => s.id === size.id) : undefined;
+        if (p.sizes.length > 0 && !chosen) return false;
+        const key = `${p.id}:${chosen?.id ?? ""}:${addOns
           .map((a) => a.id)
           .sort()
           .join(",")}`;
         const existing = get().lines.find((l) => l.key === key);
         if (existing) {
           set({ lines: get().lines.map((l) => (l.key === key ? { ...l, qty: l.qty + qty } : l)) });
-          return;
+          return true;
         }
         set({
           lines: [
@@ -53,12 +61,14 @@ export const useCart = create<CartState>()(
               productId: p.id,
               name: p.name,
               image: p.image,
-              unitPrice: p.price + addOns.reduce((s, a) => s + a.price, 0),
+              unitPrice: (chosen?.price ?? p.price) + addOns.reduce((s, a) => s + a.price, 0),
               qty,
+              size: chosen ? { id: chosen.id, name: chosen.name } : undefined,
               addOns,
             },
           ],
         });
+        return true;
       },
       remove: (key) => set({ lines: get().lines.filter((l) => l.key !== key) }),
       setQty: (key, qty) =>
