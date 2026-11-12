@@ -369,6 +369,7 @@ export type Database = {
           price: number
           product_id: string | null
           qty: number
+          size: string | null
         }
         Insert: {
           addons?: Json
@@ -379,6 +380,7 @@ export type Database = {
           price: number
           product_id?: string | null
           qty: number
+          size?: string | null
         }
         Update: {
           addons?: Json
@@ -389,6 +391,7 @@ export type Database = {
           price?: number
           product_id?: string | null
           qty?: number
+          size?: string | null
         }
         Relationships: [
           {
@@ -494,31 +497,46 @@ export type Database = {
         Row: {
           cardEnabled: boolean
           codEnabled: boolean
+          easypaisaAccountTitle: string
           easypaisaEnabled: boolean
           easypaisaNumber: string
+          easypaisaQrUrl: string
           id: number
+          instructions: string
+          jazzcashAccountTitle: string
           jazzcashEnabled: boolean
           jazzcashNumber: string
+          jazzcashQrUrl: string
           updated_at: string
         }
         Insert: {
           cardEnabled?: boolean
           codEnabled?: boolean
+          easypaisaAccountTitle?: string
           easypaisaEnabled?: boolean
           easypaisaNumber?: string
+          easypaisaQrUrl?: string
           id?: number
+          instructions?: string
+          jazzcashAccountTitle?: string
           jazzcashEnabled?: boolean
           jazzcashNumber?: string
+          jazzcashQrUrl?: string
           updated_at?: string
         }
         Update: {
           cardEnabled?: boolean
           codEnabled?: boolean
+          easypaisaAccountTitle?: string
           easypaisaEnabled?: boolean
           easypaisaNumber?: string
+          easypaisaQrUrl?: string
           id?: number
+          instructions?: string
+          jazzcashAccountTitle?: string
           jazzcashEnabled?: boolean
           jazzcashNumber?: string
+          jazzcashQrUrl?: string
           updated_at?: string
         }
         Relationships: []
@@ -543,6 +561,7 @@ export type Database = {
           recommended: boolean
           review_count: number
           short_description: string
+          sizes: Json
           slug: string
           updated_at: string
         }
@@ -565,6 +584,7 @@ export type Database = {
           recommended?: boolean
           review_count?: number
           short_description?: string
+          sizes?: Json
           slug: string
           updated_at?: string
         }
@@ -587,6 +607,7 @@ export type Database = {
           recommended?: boolean
           review_count?: number
           short_description?: string
+          sizes?: Json
           slug?: string
           updated_at?: string
         }
@@ -766,10 +787,13 @@ export type Database = {
           deliveryFee: number | null
           deliveryRadiusKm: number | null
           email: string
+          freeDeliveryAbove: number | null
           hours: string
           id: number
+          mapsUrl: string
           minOrder: number | null
           phone: string
+          prepTimeMinutes: number | null
           storeName: string
           taxRate: number | null
           updated_at: string
@@ -781,10 +805,13 @@ export type Database = {
           deliveryFee?: number | null
           deliveryRadiusKm?: number | null
           email?: string
+          freeDeliveryAbove?: number | null
           hours?: string
           id?: number
+          mapsUrl?: string
           minOrder?: number | null
           phone?: string
+          prepTimeMinutes?: number | null
           storeName?: string
           taxRate?: number | null
           updated_at?: string
@@ -796,10 +823,13 @@ export type Database = {
           deliveryFee?: number | null
           deliveryRadiusKm?: number | null
           email?: string
+          freeDeliveryAbove?: number | null
           hours?: string
           id?: number
+          mapsUrl?: string
           minOrder?: number | null
           phone?: string
+          prepTimeMinutes?: number | null
           storeName?: string
           taxRate?: number | null
           updated_at?: string

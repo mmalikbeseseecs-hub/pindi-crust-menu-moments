@@ -1,12 +1,10 @@
 import { defineConfig } from "drizzle-kit";
 
-// DATABASE_URL = your Supabase connection string
-// (Supabase → Project Settings → Database → Connection string → URI).
 export default defineConfig({
   dialect: "postgresql",
   schema: "./drizzle/schema.ts",
   out: "./drizzle/migrations",
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "",
+    url: process.env.LOVABLE_DB_MIGRATION_URL ?? "",
   },
 });
