@@ -198,6 +198,7 @@ function mapProduct(row: DbRow): Product {
     popular: row.popular,
     recommended: row.recommended,
     available: row.is_available ?? true,
+    sizes: parseSizes(row.sizes),
   };
 }
 
@@ -250,6 +251,8 @@ export type ProductInput = {
    */
   gallery?: string[];
   nutrition?: { label: string; value: string }[];
+  /** Sizes with their own prices. Empty = single price. Ids of existing sizes are kept. */
+  sizes: { id?: string | undefined; name: string; price: number }[];
 };
 
 /** Main image first, then the remaining gallery entries without duplicates. */
@@ -272,6 +275,13 @@ function productPayload(input: ProductInput) {
     ingredients: input.ingredients,
     badges: input.badges,
     is_available: input.available,
+    // The database cleans this list, gives new sizes an id and sets `price`
+    // to the cheapest size (see normalize_product_sizes).
+    sizes: input.sizes.map((s) => ({
+      ...(s.id ? { id: s.id } : {}),
+      name: s.name.trim(),
+      price: s.price,
+    })),
   };
   if (input.gallery !== undefined) payload["gallery"] = mergeGallery(image, input.gallery);
   if (input.nutrition !== undefined) payload["nutrition"] = input.nutrition;
@@ -415,7 +425,7 @@ export async function validatePromoCode(code: string): Promise<AppliedPromo> {
 // Orders
 // ============================================================
 
-const ORDER_SELECT = "*, order_items(name, qty, price, product_id, addons)";
+const ORDER_SELECT = "*, order_items(name, size, qty, price, product_id, addons)";
 
 export type PlaceOrderInput = {
   customerName: string;
@@ -431,7 +441,7 @@ export type PlaceOrderInput = {
   promoCode?: string | null | undefined;
   /** POS only: admin-approved manual discount, enforced server-side. */
   manualDiscountPercent?: number | undefined;
-  lines: { productId: string; qty: number; addOnIds: string[] }[];
+  lines: { productId: string; qty: number; addOnIds: string[]; sizeId?: string | undefined }[];
 };
 
 export type PlacedOrder = {
@@ -449,6 +459,7 @@ export function cartToOrderLines(lines: CartLine[]): PlaceOrderInput["lines"] {
     productId: l.productId,
     qty: l.qty,
     addOnIds: l.addOns.map((a) => a.id),
+    sizeId: l.size?.id,
   }));
 }
 
@@ -480,6 +491,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
       product_id: l.productId,
       qty: l.qty,
       addon_ids: l.addOnIds,
+      ...(l.sizeId ? { size_id: l.sizeId } : {}),
     })),
   });
   if (error) throw error;
@@ -505,6 +517,7 @@ function mapOrder(row: DbRow): Order {
       qty: i.qty,
       price: Number(i.price),
       productId: i.product_id ?? undefined,
+      size: i.size ?? undefined,
       addOns: Array.isArray(i.addons) ? i.addons : [],
     })),
     total: Number(row.total),
