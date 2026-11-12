@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { BadgePercent, Clock, Edit, Plus, Tag, Trash2 } from "lucide-react";
+import { BadgePercent, Edit, Plus, Trash2 } from "lucide-react";
 import { AdminPage } from "@/components/admin/AdminShell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,8 @@ import {
   fetchPromoCodes,
   updatePromoCode,
 } from "@/lib/api";
-import { useThemeStore } from "@/store/theme";
+import { siteSettingsQuery, useSiteSettings } from "@/lib/site-settings";
+import { useAuth } from "@/store/auth";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/promotions")({
@@ -67,9 +68,18 @@ const statusTone: Record<string, string> = {
 };
 
 function PromotionsPage() {
-  const promotionsEnabled = useThemeStore((s) => s.promotionsEnabled);
-  const setPromotionsEnabled = useThemeStore((s) => s.setPromotionsEnabled);
   const queryClient = useQueryClient();
+  const { brand, isLoading: settingsLoading } = useSiteSettings();
+  const role = useAuth((s) => s.role);
+  const canToggle = role === "admin" || role === "developer";
+  const toggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => saveBrandSettings({ promotionsEnabled: enabled }),
+    onSuccess: (_, enabled) => {
+      queryClient.invalidateQueries({ queryKey: siteSettingsQuery.queryKey });
+      toast.success(enabled ? "Promotions are on for customers" : "Promotions are paused");
+    },
+    onError: (err) => toast.error(errorMessage(err)),
+  });
 
   const { data: promos = [], isLoading } = useQuery({
     queryKey: ["admin-promos"],
@@ -161,37 +171,16 @@ function PromotionsPage() {
               <BadgePercent className="size-5 shrink-0" /> Master promotions toggle
             </p>
             <p className="mt-1 text-sm text-pretty text-foreground/80">
-              Turning this off completely hides the promo-code section from customer checkout
-              storewide — existing codes stay saved but cannot be applied until re-enabled.
+              Turning this off hides the promo-code box and homepage advertisements for every
+              customer — existing codes stay saved but cannot be used until you turn it back on.
             </p>
           </div>
           <Switch
-            checked={promotionsEnabled}
-            onCheckedChange={setPromotionsEnabled}
+            checked={toggleMutation.isPending ? !!toggleMutation.variables : brand.promotionsEnabled}
+            disabled={!canToggle || settingsLoading || toggleMutation.isPending}
+            onCheckedChange={(v) => toggleMutation.mutate(v)}
             aria-label="Toggle promotions storewide"
           />
-        </div>
-      </div>
-
-      {/* Static/informational — not wired to a table yet */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-          <p className="flex items-center gap-2 font-bold">
-            <Clock className="size-4 text-primary" /> Happy Hour Window
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Daily 10:00 PM – 1:00 AM · 30% off pizzas
-          </p>
-          <Badge className="mt-2 border-0 bg-warning/15 text-warning">Scheduled</Badge>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-          <p className="flex items-center gap-2 font-bold">
-            <Tag className="size-4 text-primary" /> Limited Offers
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            2 active limited-time bundle offers running
-          </p>
-          <Badge className="mt-2 border-0 bg-success/15 text-success">Active</Badge>
         </div>
       </div>
 
