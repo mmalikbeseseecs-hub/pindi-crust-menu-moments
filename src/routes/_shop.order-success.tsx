@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { CheckCircle2, MapPin, Truck, UtensilsCrossed } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { storeInfo } from "@/lib/store-config";
+import { useStoreInfo } from "@/lib/site-settings";
 
 type OrderSuccessSearch = { orderId: string | undefined };
 
@@ -25,6 +25,7 @@ export const Route = createFileRoute("/_shop/order-success")({
 });
 
 function OrderSuccessPage() {
+  const storeInfo = useStoreInfo();
   const { orderId } = Route.useSearch();
 
   // Only a real order number (returned by placeOrder) justifies a success screen.
