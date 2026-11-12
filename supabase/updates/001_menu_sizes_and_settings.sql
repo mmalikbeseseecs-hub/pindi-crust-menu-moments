@@ -328,6 +328,11 @@ on conflict (id) do update
 drop policy if exists "brand-assets: staff upload" on storage.objects;
 create policy "brand-assets: staff upload" on storage.objects for insert to authenticated
   with check (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())));
+-- Staff can see the files (needed to create links); customers just open
+-- the public image links, so there is no public "list files" rule.
+drop policy if exists "brand-assets: staff read" on storage.objects;
+create policy "brand-assets: staff read" on storage.objects for select to authenticated
+  using (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())));
 drop policy if exists "brand-assets: staff update" on storage.objects;
 create policy "brand-assets: staff update" on storage.objects for update to authenticated
   using (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())))
