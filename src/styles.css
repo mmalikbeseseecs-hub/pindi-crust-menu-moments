@@ -24,7 +24,7 @@
  */
 
 @theme inline {
-  --font-display: "Playfair Display", ui-serif, Georgia, serif;
+  --font-display: var(--brand-font-display, "Playfair Display"), ui-serif, Georgia, serif;
   --font-sans: "Montserrat", ui-sans-serif, system-ui, sans-serif;
 
   --radius-sm: calc(var(--radius) - 8px);

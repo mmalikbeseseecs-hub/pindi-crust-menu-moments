@@ -20,6 +20,7 @@ import type { AppliedPromo } from "./pricing";
 import { slugify } from "./format";
 import { validAdDestination, type AdDestination } from "./advertisements";
 import { manualPaymentError } from "./order-alerts";
+import { parseSizes } from "./sizes";
 
 // ============================================================
 // Helpers
@@ -198,6 +199,7 @@ function mapProduct(row: DbRow): Product {
     popular: row.popular,
     recommended: row.recommended,
     available: row.is_available ?? true,
+    sizes: parseSizes(row.sizes),
   };
 }
 
@@ -250,6 +252,8 @@ export type ProductInput = {
    */
   gallery?: string[];
   nutrition?: { label: string; value: string }[];
+  /** Sizes with their own prices. Empty = single price. Ids of existing sizes are kept. */
+  sizes: { id?: string | undefined; name: string; price: number }[];
 };
 
 /** Main image first, then the remaining gallery entries without duplicates. */
@@ -272,6 +276,13 @@ function productPayload(input: ProductInput) {
     ingredients: input.ingredients,
     badges: input.badges,
     is_available: input.available,
+    // The database cleans this list, gives new sizes an id and sets `price`
+    // to the cheapest size (see normalize_product_sizes).
+    sizes: input.sizes.map((s) => ({
+      ...(s.id ? { id: s.id } : {}),
+      name: s.name.trim(),
+      price: s.price,
+    })),
   };
   if (input.gallery !== undefined) payload["gallery"] = mergeGallery(image, input.gallery);
   if (input.nutrition !== undefined) payload["nutrition"] = input.nutrition;
@@ -415,7 +426,7 @@ export async function validatePromoCode(code: string): Promise<AppliedPromo> {
 // Orders
 // ============================================================
 
-const ORDER_SELECT = "*, order_items(name, qty, price, product_id, addons)";
+const ORDER_SELECT = "*, order_items(name, size, qty, price, product_id, addons)";
 
 export type PlaceOrderInput = {
   customerName: string;
@@ -431,7 +442,7 @@ export type PlaceOrderInput = {
   promoCode?: string | null | undefined;
   /** POS only: admin-approved manual discount, enforced server-side. */
   manualDiscountPercent?: number | undefined;
-  lines: { productId: string; qty: number; addOnIds: string[] }[];
+  lines: { productId: string; qty: number; addOnIds: string[]; sizeId?: string | undefined }[];
 };
 
 export type PlacedOrder = {
@@ -449,6 +460,7 @@ export function cartToOrderLines(lines: CartLine[]): PlaceOrderInput["lines"] {
     productId: l.productId,
     qty: l.qty,
     addOnIds: l.addOns.map((a) => a.id),
+    sizeId: l.size?.id,
   }));
 }
 
@@ -480,6 +492,7 @@ export async function placeOrder(input: PlaceOrderInput): Promise<PlacedOrder> {
       product_id: l.productId,
       qty: l.qty,
       addon_ids: l.addOnIds,
+      ...(l.sizeId ? { size_id: l.sizeId } : {}),
     })),
   });
   if (error) throw error;
@@ -505,6 +518,7 @@ function mapOrder(row: DbRow): Order {
       qty: i.qty,
       price: Number(i.price),
       productId: i.product_id ?? undefined,
+      size: i.size ?? undefined,
       addOns: Array.isArray(i.addons) ? i.addons : [],
     })),
     total: Number(row.total),
@@ -1334,24 +1348,60 @@ export async function requestPasswordReset(email: string, redirectTo: string): P
   if (error) throw error;
 }
 
+// ============================================================
+// Settings (one row each, id = 1). Everyone can read them — the shop
+// needs contact details, delivery fee, tax and wallet numbers — and only
+// admins can save them (enforced by the database).
+// ============================================================
+
+const numOrNull = (v: unknown): number | null =>
+  v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v);
+const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
 export type StoreSettings = {
   storeName: string;
   phone: string;
+  /** International format without "+", e.g. 923001234567. */
   whatsapp: string;
   email: string;
   address: string;
   hours: string;
   deliveryFee: number | null;
+  /** Fraction, e.g. 0.05 = 5%. */
   taxRate: number | null;
   minOrder: number | null;
+  /** Delivery is free when the items total reaches this amount. */
+  freeDeliveryAbove: number | null;
   deliveryRadiusKm: number | null;
+  prepTimeMinutes: number | null;
+  mapsUrl: string;
   acceptingOrders: boolean;
 };
 
+function mapStoreSettings(row: DbRow): StoreSettings {
+  return {
+    storeName: str(row.storeName),
+    phone: str(row.phone),
+    whatsapp: str(row.whatsapp),
+    email: str(row.email),
+    address: str(row.address),
+    hours: str(row.hours),
+    deliveryFee: numOrNull(row.deliveryFee),
+    taxRate: numOrNull(row.taxRate),
+    minOrder: numOrNull(row.minOrder),
+    freeDeliveryAbove: numOrNull(row.freeDeliveryAbove),
+    deliveryRadiusKm: numOrNull(row.deliveryRadiusKm),
+    prepTimeMinutes: numOrNull(row.prepTimeMinutes),
+    mapsUrl: str(row.mapsUrl),
+    acceptingOrders: row.acceptingOrders ?? true,
+  };
+}
+
 export async function fetchStoreSettings(): Promise<StoreSettings | null> {
-  const { data, error } = await db().from("store_settings").select("*").maybeSingle();
+  if (!isBackendConfigured) return null;
+  const { data, error } = await db().from("store_settings").select("*").eq("id", 1).maybeSingle();
   if (error) throw error;
-  return (data as StoreSettings | null) ?? null;
+  return data ? mapStoreSettings(data) : null;
 }
 
 export async function saveStoreSettings(input: StoreSettings): Promise<void> {
@@ -1365,10 +1415,39 @@ export type PaymentSettings = {
   codEnabled: boolean;
   easypaisaEnabled: boolean;
   easypaisaNumber: string;
+  easypaisaAccountTitle: string;
+  easypaisaQrUrl: string;
   jazzcashEnabled: boolean;
   jazzcashNumber: string;
+  jazzcashAccountTitle: string;
+  jazzcashQrUrl: string;
   cardEnabled: boolean;
+  /** Shown to customers at checkout under the wallet details. */
+  instructions: string;
 };
+
+function mapPaymentSettings(row: DbRow): PaymentSettings {
+  return {
+    codEnabled: row.codEnabled ?? true,
+    easypaisaEnabled: row.easypaisaEnabled ?? false,
+    easypaisaNumber: str(row.easypaisaNumber),
+    easypaisaAccountTitle: str(row.easypaisaAccountTitle),
+    easypaisaQrUrl: str(row.easypaisaQrUrl),
+    jazzcashEnabled: row.jazzcashEnabled ?? false,
+    jazzcashNumber: str(row.jazzcashNumber),
+    jazzcashAccountTitle: str(row.jazzcashAccountTitle),
+    jazzcashQrUrl: str(row.jazzcashQrUrl),
+    cardEnabled: row.cardEnabled ?? false,
+    instructions: str(row.instructions),
+  };
+}
+
+export async function fetchPaymentSettings(): Promise<PaymentSettings | null> {
+  if (!isBackendConfigured) return null;
+  const { data, error } = await db().from("payment_settings").select("*").eq("id", 1).maybeSingle();
+  if (error) throw error;
+  return data ? mapPaymentSettings(data) : null;
+}
 
 export async function savePaymentSettings(input: PaymentSettings): Promise<void> {
   const { error } = await db()
@@ -1381,9 +1460,15 @@ export type MaintenanceSettings = { enabled: boolean; message: string; eta: stri
 
 export async function fetchMaintenanceSettings(): Promise<MaintenanceSettings | null> {
   if (!isBackendConfigured) return null;
-  const { data, error } = await db().from("maintenance_settings").select("*").maybeSingle();
+  const { data, error } = await db()
+    .from("maintenance_settings")
+    .select("enabled, message, eta")
+    .eq("id", 1)
+    .maybeSingle();
   if (error) throw error;
-  return (data as MaintenanceSettings | null) ?? null;
+  return data
+    ? { enabled: !!data.enabled, message: str(data.message), eta: str(data.eta) }
+    : null;
 }
 
 export async function saveMaintenanceSettings(input: MaintenanceSettings): Promise<void> {
@@ -1393,10 +1478,153 @@ export async function saveMaintenanceSettings(input: MaintenanceSettings): Promi
   if (error) throw error;
 }
 
-/** Publishes the locally edited brand draft so every visitor sees it. */
-export async function publishBrandSettings(draft: Record<string, unknown>): Promise<void> {
-  const { error } = await db().from("brand_settings").upsert({ id: 1, settings: draft });
+/** Raw published brand JSON (logo, colours, homepage text, theme…). Use resolveBrand() to read it. */
+export async function fetchBrandSettings(): Promise<Record<string, unknown> | null> {
+  if (!isBackendConfigured) return null;
+  const { data, error } = await db().from("brand_settings").select("settings").eq("id", 1).maybeSingle();
   if (error) throw error;
+  const settings = data?.settings;
+  return settings && typeof settings === "object" && !Array.isArray(settings)
+    ? (settings as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * Publishes brand settings. Merges `patch` into the latest saved copy so two
+ * screens (Brand, Themes, Promotions) never wipe each other's fields.
+ */
+export async function saveBrandSettings(patch: Record<string, unknown>): Promise<void> {
+  const current = (await fetchBrandSettings()) ?? {};
+  const { error } = await db()
+    .from("brand_settings")
+    .upsert({ id: 1, settings: { ...current, ...patch } });
+  if (error) throw error;
+}
+
+// ---------- Branches ----------
+
+export type Branch = {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  hours: string;
+  active: boolean;
+  sortOrder: number;
+};
+
+function mapBranch(row: DbRow): Branch {
+  return {
+    id: row.id,
+    name: str(row.name),
+    address: str(row.address),
+    phone: str(row.phone),
+    hours: str(row.hours),
+    active: row.is_active ?? true,
+    sortOrder: row.sort_order ?? 0,
+  };
+}
+
+/** Shop: active branches only. Admin: everything. (RLS decides; staff see inactive too.) */
+export async function fetchBranches(includeInactive = false): Promise<Branch[]> {
+  if (!isBackendConfigured) return [];
+  let q = db().from("branches").select("*").order("sort_order").order("created_at");
+  if (!includeInactive) q = q.eq("is_active", true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).map(mapBranch);
+}
+
+export type BranchInput = Omit<Branch, "id" | "sortOrder">;
+
+export async function saveBranch(input: BranchInput, id?: string): Promise<void> {
+  const row = {
+    name: input.name.trim(),
+    address: input.address.trim(),
+    phone: input.phone.trim(),
+    hours: input.hours.trim(),
+    is_active: input.active,
+  };
+  const { error } = id
+    ? await db().from("branches").update(row).eq("id", id)
+    : await db().from("branches").insert(row);
+  if (error) throw error;
+}
+
+export async function deleteBranch(id: string): Promise<void> {
+  const { error } = await db().from("branches").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ---------- Everything the shop needs, in one request batch ----------
+
+export type SiteSettingsData = {
+  store: StoreSettings | null;
+  payments: PaymentSettings | null;
+  maintenance: MaintenanceSettings | null;
+  brand: Record<string, unknown> | null;
+  branches: Branch[];
+};
+
+export async function fetchSiteSettings(): Promise<SiteSettingsData> {
+  if (!isBackendConfigured) {
+    return { store: null, payments: null, maintenance: null, brand: null, branches: [] };
+  }
+  const [store, payments, maintenance, brand, branches] = await Promise.all([
+    fetchStoreSettings(),
+    fetchPaymentSettings(),
+    fetchMaintenanceSettings(),
+    fetchBrandSettings(),
+    fetchBranches(false),
+  ]);
+  return { store, payments, maintenance, brand, branches };
+}
+
+// ---------- Image uploads (logo, favicon, hero, wallet QR, menu photos) ----------
+
+export const IMAGE_BUCKET = "brand-assets";
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const TEN_YEARS_SECONDS = 60 * 60 * 24 * 365 * 10;
+
+/**
+ * Uploads an image (staff only) and returns a link the shop can show.
+ * On a public bucket this is the permanent public link; if the bucket is
+ * private, a long-lived signed link is returned instead.
+ */
+export async function uploadImage(file: File, folder: "brand" | "menu" | "payments"): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("PC: Please choose an image file.");
+  if (file.size > MAX_IMAGE_BYTES) throw new Error("PC: Images must be 5 MB or smaller.");
+  const ext =
+    (file.name.split(".").pop() ?? "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "png";
+  const path = `${folder}/${Date.now()}-${crypto.randomUUID()}.${ext}`;
+  const bucket = db().storage.from(IMAGE_BUCKET);
+  const { error } = await bucket.upload(path, file, {
+    cacheControl: "31536000",
+    upsert: false,
+    contentType: file.type,
+  });
+  if (error) {
+    const msg = String((error as { message?: string }).message ?? "");
+    if (/bucket not found/i.test(msg)) {
+      throw new Error("PC: Image storage isn't set up yet. Run the latest database update in Supabase.");
+    }
+    if (/row-level security|unauthorized|403/i.test(msg)) {
+      throw new Error("PC: Only staff can upload images.");
+    }
+    throw error;
+  }
+  const publicUrl = bucket.getPublicUrl(path).data.publicUrl;
+  try {
+    const res = await fetch(publicUrl, { method: "HEAD" });
+    if (res.ok) return publicUrl;
+  } catch {
+    // fall through to a signed link
+  }
+  const { data, error: signError } = await bucket.createSignedUrl(path, TEN_YEARS_SECONDS);
+  if (signError || !data?.signedUrl) {
+    throw signError ?? new Error("PC: The image uploaded but no link could be created.");
+  }
+  return data.signedUrl;
 }
 
 export async function sendCustomerMessage(customerId: string, body: string): Promise<void> {

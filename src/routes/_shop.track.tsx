@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/Primitives";
 import { fetchMyOrders, subscribeToOrders, trackOrder } from "@/lib/api";
 import { formatPKR } from "@/lib/format";
-import { storeInfo } from "@/lib/store-config";
+import { useStoreInfo } from "@/lib/site-settings";
 import type { OrderStatus } from "@/lib/types";
 import { useAuth } from "@/store/auth";
 
@@ -56,6 +56,7 @@ export const Route = createFileRoute("/_shop/track")({
 });
 
 function TrackPage() {
+  const storeInfo = useStoreInfo();
   const { orderId } = Route.useSearch();
   const navigate = Route.useNavigate();
   const userId = useAuth((s) => s.userId);

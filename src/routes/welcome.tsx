@@ -4,7 +4,7 @@ import { Clock3, Flame, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SplashScreen } from "@/components/customer/SplashScreen";
 import { images } from "@/lib/images";
-import { storeInfo } from "@/lib/store-config";
+import { useStoreInfo } from "@/lib/site-settings";
 
 export const Route = createFileRoute("/welcome")({
   head: () => ({
@@ -44,6 +44,7 @@ const valueProps = [
 ];
 
 function WelcomePage() {
+  const storeInfo = useStoreInfo();
   return (
     <div className="relative min-h-screen">
       <SplashScreen />

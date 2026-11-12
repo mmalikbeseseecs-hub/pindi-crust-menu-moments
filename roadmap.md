@@ -16,3 +16,10 @@
 - [x] Verified real staff session: admin and developer pages accessible, sound enabled, refresh retains access
 - [ ] Two-session alarm and payment verification test: requires real admin/customer accounts and menu items; user will test orders
 - [ ] Later: wire published settings into storefront (store-config/pricing), payment gateway (needs credentials)
+
+## Menu sizes + working settings (Nov 12)
+- [ ] Unlimited sizes per menu item (admin), size choice when ordering (shop, POS, reorder), priced by the database
+- [ ] Settings load saved values and publish: store, payments, maintenance, brand (logo/favicon/hero/colours/SEO), themes, promotions toggle
+- [ ] Storefront reads published settings (contact, delivery fee, tax, wallets, logo, favicon, theme, homepage)
+- [ ] Image uploads (logo, favicon, hero, wallet QR, menu photos) to a storage bucket
+- [ ] SQL update file for the owner's own Supabase + README steps; Lovable-only dev package removed

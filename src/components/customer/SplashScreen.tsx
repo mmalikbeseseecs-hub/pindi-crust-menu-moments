@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Flame } from "lucide-react";
-import { storeInfo } from "@/lib/store-config";
+import { useStoreInfo } from "@/lib/site-settings";
 
 const SESSION_KEY = "pindi-splash-shown";
 
 /** Full-screen animated splash shown once per browser session. */
 export function SplashScreen() {
+  const storeInfo = useStoreInfo();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {

@@ -1,25 +1,29 @@
 import { useEffect, useRef } from "react";
 import { useThemeStore } from "@/store/theme";
-import { useBrandStore } from "@/store/brand";
+import { useBrand } from "@/lib/site-settings";
+
+/** Google Fonts request per selectable display font (Playfair Display + Montserrat load in __root). */
+const FONT_REQUEST: Record<string, string> = {
+  Lora: "Lora:wght@500;600;700",
+  Poppins: "Poppins:wght@500;600;700;800",
+  Sora: "Sora:wght@500;600;700;800",
+  "Bebas Neue": "Bebas+Neue",
+};
 
 /**
- * Applies theme to <html>.
- *
- * Two layers:
+ * Applies the PUBLISHED brand to <html> for every visitor:
  * 1. Seasonal theme → data-theme attribute → CSS variable overrides in styles.css
- * 2. Brand 3-color customization → CSS variables on :root
+ * 2. Brand colours → CSS variables on :root (converted from hex to oklch)
+ * 3. Display font, corner radius, favicon and browser theme colour
  *
- * The brand colors are converted from hex to oklch and applied as CSS
- * variables, which all components consume via Tailwind utilities.
- *
- * In dark mode, brand colors are lightened to maintain readability.
+ * Light/dark mode is the visitor's own preference. In dark mode, brand
+ * colours are lightened to stay readable.
  */
 export function ThemeApplier() {
-  const theme = useThemeStore((s) => s.theme);
+  const brand = useBrand();
+  const theme = brand.theme;
   const mode = useThemeStore((s) => s.mode);
-  const primaryColor = useBrandStore((s) => s.primaryColor);
-  const accentColor = useBrandStore((s) => s.accentColor);
-  const surfaceColor = useBrandStore((s) => s.surfaceColor);
+  const { primaryColor, accentColor, surfaceColor, font, radius, faviconUrl } = brand;
 
   /* Track which custom properties we set so we can clean them up properly */
   const appliedProps = useRef<string[]>([]);
@@ -31,6 +35,43 @@ export function ThemeApplier() {
     else root.setAttribute("data-theme", theme);
     root.classList.toggle("dark", mode === "dark");
   }, [theme, mode]);
+
+  /* Display font + corner radius */
+  useEffect(() => {
+    const root = document.documentElement;
+    const request = FONT_REQUEST[font];
+    if (request) {
+      const id = "brand-font-link";
+      let link = document.getElementById(id) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.createElement("link");
+        link.id = id;
+        link.rel = "stylesheet";
+        document.head.appendChild(link);
+      }
+      link.href = `https://fonts.googleapis.com/css2?family=${request}&display=swap`;
+    }
+    root.style.setProperty("--brand-font-display", `"${font}"`);
+    root.style.setProperty("--radius", radius);
+    return () => {
+      root.style.removeProperty("--brand-font-display");
+      root.style.removeProperty("--radius");
+    };
+  }, [font, radius]);
+
+  /* Favicon + browser bar colour */
+  useEffect(() => {
+    let icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!icon) {
+      icon = document.createElement("link");
+      icon.rel = "icon";
+      document.head.appendChild(icon);
+    }
+    icon.href = faviconUrl || "/favicon.ico";
+    if (faviconUrl) icon.removeAttribute("type");
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) meta.content = primaryColor;
+  }, [faviconUrl, primaryColor]);
 
   /* Brand 3-color system */
   useEffect(() => {

@@ -84,29 +84,28 @@ export const seasonalThemes: {
   },
 ];
 
+/**
+ * Per-visitor display preference only (light / dark). The seasonal theme,
+ * promotions switch and maintenance mode are published settings — see
+ * "@/lib/site-settings".
+ */
 type ThemeState = {
-  theme: SeasonalTheme;
   mode: "light" | "dark";
-  promotionsEnabled: boolean;
-  maintenanceMode: boolean;
-  setTheme: (t: SeasonalTheme) => void;
   toggleMode: () => void;
-  setPromotionsEnabled: (v: boolean) => void;
-  setMaintenanceMode: (v: boolean) => void;
 };
 
 export const useThemeStore = create<ThemeState>()(
   persist(
     (set, get) => ({
-      theme: "default",
       mode: "light",
-      promotionsEnabled: true,
-      maintenanceMode: false,
-      setTheme: (theme) => set({ theme }),
       toggleMode: () => set({ mode: get().mode === "light" ? "dark" : "light" }),
-      setPromotionsEnabled: (promotionsEnabled) => set({ promotionsEnabled }),
-      setMaintenanceMode: (maintenanceMode) => set({ maintenanceMode }),
     }),
-    { name: "pindi-theme" },
+    {
+      name: "pindi-theme",
+      version: 2,
+      migrate: (persisted) => ({
+        mode: (persisted as { mode?: "light" | "dark" } | undefined)?.mode === "dark" ? "dark" : "light",
+      }),
+    },
   ),
 );

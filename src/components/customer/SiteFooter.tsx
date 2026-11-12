@@ -7,7 +7,7 @@ import { isBackendConfigured } from "@/lib/supabaseClient";
 import { Logo } from "@/components/brand/Logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { storeInfo } from "@/lib/store-config";
+import { useSiteSettings } from "@/lib/site-settings";
 
 const explore = [
   { to: "/menu", label: "Menu" },
@@ -24,15 +24,45 @@ const support = [
 ] as const;
 
 export function SiteFooter() {
+  const { brand, storeInfo } = useSiteSettings();
+  const socials = [
+    brand.social.instagram && {
+      label: "Instagram",
+      href: `https://instagram.com/${brand.social.instagram.replace(/^@/, "")}`,
+    },
+    brand.social.facebook && {
+      label: "Facebook",
+      href: `https://facebook.com/${brand.social.facebook.replace(/^@/, "")}`,
+    },
+    brand.social.tiktok && {
+      label: "TikTok",
+      href: `https://tiktok.com/@${brand.social.tiktok.replace(/^@/, "")}`,
+    },
+  ].filter(Boolean) as { label: string; href: string }[];
   return (
     <footer className="mt-16 border-t border-border bg-surface-container">
       <div className="mx-auto grid max-w-7xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-4">
         <div className="lg:col-span-1">
           <Logo />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-muted-foreground text-pretty">
-            Artisanal excellence in every slice. We believe in the magic of slow-fermented dough and
-            fiercely local ingredients.
+            {brand.footerText}
           </p>
+          {socials.length > 0 && (
+            <ul className="mt-4 flex flex-wrap gap-2">
+              {socials.map((s) => (
+                <li key={s.label}>
+                  <a
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+                  >
+                    {s.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <FooterCol title="Explore" links={explore} />
@@ -63,7 +93,7 @@ export function SiteFooter() {
 
       <div className="border-t border-border">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs text-muted-foreground sm:flex-row sm:px-6">
-          <p>© 2026 PINDI CRUST · Artisanal Excellence</p>
+          <p>{brand.copyright}</p>
           {storeInfo.hours && <p>{storeInfo.hours}</p>}
         </div>
       </div>

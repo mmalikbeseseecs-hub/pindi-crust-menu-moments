@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { formatPKR } from "@/lib/format";
-import { storeInfo } from "@/lib/store-config";
+import { useStoreInfo } from "@/lib/site-settings";
 import { ArrowLeft, Printer, Scissors } from "lucide-react";
 
 export interface ReceiptProps {
@@ -26,6 +26,7 @@ export interface ReceiptProps {
 const Divider = () => <hr className="border-t border-dashed border-black/80 my-2" />;
 
 export function Receipt({ order, className }: ReceiptProps) {
+  const storeInfo = useStoreInfo();
   const subtotal =
     order.subtotal ?? order.items.reduce((sum, item) => sum + item.qty * item.price, 0);
 

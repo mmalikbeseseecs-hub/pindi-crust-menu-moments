@@ -2,19 +2,13 @@
  * Checkout maths, in ONE place.
  *
  * This file only produces the *preview* the customer sees in the cart and
- * checkout. The authoritative numbers must be recomputed server-side (the
- * future `place_order` function) from live prices.
+ * checkout. The authoritative numbers are recomputed by the database
+ * (`place_order`) from live prices and the published store settings.
  *
- * DELIVERY_FEE and TAX_RATE are UNSET (null) until the store's real values
- * are published from the backend. Previously several screens assumed
- * different defaults; now there is a single source and no invented number.
- * While unset, totals exclude them and the UI labels them "Not configured".
+ * Delivery fee, tax rate and the free-delivery threshold come from
+ * Admin → Settings → Store (see useSiteSettings().pricing). While a value
+ * is unset (null) it counts as 0 and the UI labels it "Not configured".
  */
-
-export const DELIVERY_FEE: number | null = null;
-export const TAX_RATE: number | null = null;
-
-export const pricingConfigured = DELIVERY_FEE !== null && TAX_RATE !== null;
 
 export type AppliedPromo = {
   code: string;
@@ -28,6 +22,12 @@ export type Totals = {
   tax: number;
   deliveryFee: number;
   total: number;
+};
+
+export type PricingInput = {
+  deliveryFee: number | null;
+  taxRate: number | null;
+  freeDeliveryAbove?: number | null | undefined;
 };
 
 export function promoDiscount(subtotal: number, promo: AppliedPromo | null): number {
@@ -45,24 +45,32 @@ export function promoLabel(promo: AppliedPromo): string {
 }
 
 /** Label for the tax row, e.g. "Tax (5%)" or "Tax (not configured)". */
-export function taxLabel(rate: number | null = TAX_RATE): string {
-  return rate === null ? "Tax (not configured)" : `Tax (${Math.round(rate * 100)}%)`;
+export function taxLabel(rate: number | null): string {
+  if (rate === null) return "Tax (not configured)";
+  const pct = Math.round(rate * 10000) / 100;
+  return `Tax (${pct}%)`;
 }
 
-/** Online orders pay delivery + tax; POS (walk-in) orders don't. Unset values count as 0. */
+/**
+ * Online orders pay delivery + tax; POS (walk-in) orders don't. Unset values
+ * count as 0. Delivery is free once the items total reaches
+ * `freeDeliveryAbove` (same rule as the database).
+ */
 export function computeTotals(
   subtotal: number,
   promo: AppliedPromo | null,
-  source: "online" | "pos" = "online",
-  config: { deliveryFee: number | null; taxRate: number | null } = {
-    deliveryFee: DELIVERY_FEE,
-    taxRate: TAX_RATE,
-  },
+  source: "online" | "pos",
+  config: PricingInput,
 ): Totals {
   const discount = promoDiscount(subtotal, promo);
   const taxable = subtotal - discount;
   const online = source === "online" && subtotal > 0;
   const tax = online && config.taxRate !== null ? Math.round(taxable * config.taxRate) : 0;
-  const deliveryFee = online && config.deliveryFee !== null ? config.deliveryFee : 0;
+  const freeDelivery =
+    config.freeDeliveryAbove !== null &&
+    config.freeDeliveryAbove !== undefined &&
+    subtotal >= config.freeDeliveryAbove;
+  const deliveryFee =
+    online && config.deliveryFee !== null && !freeDelivery ? config.deliveryFee : 0;
   return { subtotal, discount, tax, deliveryFee, total: taxable + tax + deliveryFee };
 }

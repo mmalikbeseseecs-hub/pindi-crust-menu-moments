@@ -19,7 +19,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { images } from "@/lib/images";
-import { storeInfo } from "@/lib/store-config";
+import { useStoreInfo } from "@/lib/site-settings";
 import { fetchMyProfile, landingRouteForRole, signInWithPassword, signInWithGoogle } from "@/lib/auth-api";
 import { useAuth } from "@/store/auth";
 import { adminPreviewAvailable, setAdminPreview } from "@/lib/preview";
@@ -180,6 +180,7 @@ export function AuthShell({
   children: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  const storeInfo = useStoreInfo();
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="relative hidden overflow-hidden lg:block">

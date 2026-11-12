@@ -43,6 +43,13 @@
       "when": 1794208041678,
       "tag": "0005_allow_manual_payment_statuses",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794480760182,
+      "tag": "0006_menu_sizes_and_settings",
+      "breakpoints": true
     }
   ]
 }
