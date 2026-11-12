@@ -17,6 +17,9 @@ export type AddOn = {
   active: boolean;
 };
 
+/** One size of a menu item (e.g. Small / Medium / Large), each with its own price. */
+export type ProductSize = { id: string; name: string; price: number };
+
 export type Product = {
   id: string;
   slug: string;
@@ -40,6 +43,11 @@ export type Product = {
   recommended?: boolean | undefined;
   /** Unavailable items are hidden from the storefront but kept in admin. */
   available: boolean;
+  /**
+   * Sizes the customer must choose from. Empty = single price (`price`).
+   * When present, `price` is the cheapest size (kept in sync by the database).
+   */
+  sizes: ProductSize[];
 };
 
 export type Category = {
@@ -66,6 +74,8 @@ export type OrderItem = {
   /** Unit price at the time of the order (add-ons included). */
   price: number;
   productId?: string;
+  /** Size chosen for this line, if the item has sizes. */
+  size?: string | undefined;
   addOns: { id: string; name: string; price: number }[];
 };
 
