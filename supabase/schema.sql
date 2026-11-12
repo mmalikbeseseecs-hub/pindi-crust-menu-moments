@@ -8,7 +8,7 @@
 -- Contains: roles, all tables, security rules (RLS), order/pricing logic,
 -- order tracking, payment verification, notifications, analytics, reports,
 -- activity log, realtime for live orders, and sign-up profile creation
--- (email + Google).
+-- (email + Google), menu sizes, and image uploads (logo, favicon, photos).
 --
 -- Roles:  customer  – normal shopper (everyone who signs up)
 --         manager   – staff: orders, POS, kitchen, menu edits
@@ -508,6 +508,80 @@ create table if not exists public.activity_logs (
 );
 create index if not exists activity_logs_created_idx on public.activity_logs (created_at desc);
 
+-- ---------------------------------------------------------------------
+-- 7b. MENU SIZES
+-- ---------------------------------------------------------------------
+alter table public.products add column if not exists sizes jsonb not null default '[]'::jsonb;
+alter table public.order_items add column if not exists size text;
+
+-- Cleans the size list an admin saves and keeps products.price equal to
+-- the cheapest size, so menu cards can show "from Rs …".
+create or replace function public.normalize_product_sizes() returns trigger
+language plpgsql set search_path = public as $$
+declare
+  s          jsonb;
+  cleaned    jsonb := '[]'::jsonb;
+  v_name     text;
+  v_price    numeric;
+  v_id       text;
+  seen_ids   text[] := '{}';
+  seen_names text[] := '{}';
+begin
+  if new.sizes is null or jsonb_typeof(new.sizes) <> 'array' then
+    new.sizes := '[]'::jsonb;
+  end if;
+  if jsonb_array_length(new.sizes) > 30 then
+    raise exception 'PC: A menu item can have at most 30 sizes.';
+  end if;
+  for s in select * from jsonb_array_elements(new.sizes) loop
+    if jsonb_typeof(s) <> 'object' then
+      raise exception 'PC: Each size needs a name and a price.';
+    end if;
+    v_name := nullif(trim(coalesce(s ->> 'name', '')), '');
+    if v_name is null then raise exception 'PC: Every size needs a name.'; end if;
+    if length(v_name) > 40 then raise exception 'PC: Size names must be 40 characters or fewer.'; end if;
+    if lower(v_name) = any (seen_names) then raise exception 'PC: The size "%" is listed twice.', v_name; end if;
+    begin
+      v_price := (s ->> 'price')::numeric;
+    exception when others then
+      raise exception 'PC: The size "%" needs a valid price.', v_name;
+    end;
+    if v_price is null or v_price <= 0 then
+      raise exception 'PC: The size "%" needs a price greater than zero.', v_name;
+    end if;
+    v_id := nullif(trim(coalesce(s ->> 'id', '')), '');
+    if v_id is null or v_id = any (seen_ids) then v_id := gen_random_uuid()::text; end if;
+    seen_ids := seen_ids || v_id;
+    seen_names := seen_names || lower(v_name);
+    cleaned := cleaned || jsonb_build_object('id', v_id, 'name', v_name, 'price', round(v_price, 2));
+  end loop;
+  new.sizes := cleaned;
+  if jsonb_array_length(cleaned) > 0 then
+    new.price := (select min((x ->> 'price')::numeric) from jsonb_array_elements(cleaned) x);
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists normalize_product_sizes on public.products;
+create trigger normalize_product_sizes
+  before insert or update on public.products
+  for each row execute function public.normalize_product_sizes();
+
+-- ---------------------------------------------------------------------
+-- 7c. EXTRA SETTINGS
+-- ---------------------------------------------------------------------
+alter table public.store_settings
+  add column if not exists "freeDeliveryAbove" numeric(10,2),
+  add column if not exists "prepTimeMinutes"   integer,
+  add column if not exists "mapsUrl"           text not null default '';
+
+alter table public.payment_settings
+  add column if not exists "easypaisaAccountTitle" text not null default '',
+  add column if not exists "jazzcashAccountTitle"  text not null default '',
+  add column if not exists "easypaisaQrUrl"        text not null default '',
+  add column if not exists "jazzcashQrUrl"         text not null default '',
+  add column if not exists "instructions"          text not null default '';
+
 -- updated_at triggers
 do $$
 declare t text;
@@ -671,27 +745,29 @@ create or replace function public.place_order(
 language plpgsql security definer set search_path = public as $$
 #variable_conflict use_column
 declare
-  uid        uuid := auth.uid();
-  staff      boolean := public.is_staff(auth.uid());
-  st         public.store_settings%rowtype;
-  ps         public.payment_settings%rowtype;
-  line       jsonb;
-  prod       public.products%rowtype;
-  addon      public.add_ons%rowtype;
-  addon_id   text;
-  qty        integer;
-  unit_price numeric;
-  addon_json jsonb;
-  lines      jsonb := '[]'::jsonb;
-  v_sub      numeric := 0;
-  v_disc     numeric := 0;
-  v_fee      numeric := 0;
-  v_tax      numeric := 0;
-  promo      public.promo_codes%rowtype;
-  v_promo    text := nullif(upper(trim(coalesce(p_promo_code, ''))), '');
-  v_manual   numeric := coalesce(p_manual_discount_percent, 0);
-  v_order    public.orders%rowtype;
-  existing   public.orders%rowtype;
+  uid         uuid := auth.uid();
+  staff       boolean := public.is_staff(auth.uid());
+  st          public.store_settings%rowtype;
+  ps          public.payment_settings%rowtype;
+  line        jsonb;
+  prod        public.products%rowtype;
+  addon       public.add_ons%rowtype;
+  addon_id    text;
+  qty         integer;
+  unit_price  numeric;
+  addon_json  jsonb;
+  v_size      jsonb;
+  v_size_name text;
+  lines       jsonb := '[]'::jsonb;
+  v_sub       numeric := 0;
+  v_disc      numeric := 0;
+  v_fee       numeric := 0;
+  v_tax       numeric := 0;
+  promo       public.promo_codes%rowtype;
+  v_promo     text := nullif(upper(trim(coalesce(p_promo_code, ''))), '');
+  v_manual    numeric := coalesce(p_manual_discount_percent, 0);
+  v_order     public.orders%rowtype;
+  existing    public.orders%rowtype;
 begin
   -- Same checkout submitted twice → return the first order.
   if nullif(trim(coalesce(p_idempotency_key, '')), '') is not null then
@@ -754,7 +830,21 @@ begin
         coalesce(prod.name, 'An item');
     end if;
 
+    -- Items with sizes are priced by the chosen size.
     unit_price := prod.price;
+    v_size_name := null;
+    if jsonb_array_length(coalesce(prod.sizes, '[]'::jsonb)) > 0 then
+      select e.value into v_size
+        from jsonb_array_elements(prod.sizes) e
+       where e.value ->> 'id' = coalesce(line ->> 'size_id', '')
+       limit 1;
+      if v_size is null then
+        raise exception 'PC: Please choose a size for %.', prod.name;
+      end if;
+      unit_price := (v_size ->> 'price')::numeric;
+      v_size_name := v_size ->> 'name';
+    end if;
+
     addon_json := '[]'::jsonb;
     for addon_id in select * from jsonb_array_elements_text(coalesce(line -> 'addon_ids', '[]'::jsonb)) loop
       select * into addon from public.add_ons where id = addon_id::uuid;
@@ -766,8 +856,10 @@ begin
     end loop;
 
     v_sub := v_sub + unit_price * qty;
-    lines := lines || jsonb_build_object('product_id', prod.id, 'name', prod.name, 'qty', qty,
-                                         'price', unit_price, 'addons', addon_json);
+    lines := lines || jsonb_build_object(
+      'product_id', prod.id,
+      'name', prod.name || coalesce(' (' || v_size_name || ')', ''),
+      'size', v_size_name, 'qty', qty, 'price', unit_price, 'addons', addon_json);
   end loop;
 
   if p_source = 'online' and st.id is not null and st."minOrder" is not null and v_sub < st."minOrder" then
@@ -796,8 +888,12 @@ begin
   v_disc := least(v_disc, v_sub);
 
   -- Online orders pay delivery + tax; in-store (POS) orders don't.
+  -- Delivery is free when the items total reaches "free delivery above".
   if p_source = 'online' and st.id is not null then
     v_fee := coalesce(st."deliveryFee", 0);
+    if st."freeDeliveryAbove" is not null and v_sub >= st."freeDeliveryAbove" then
+      v_fee := 0;
+    end if;
     v_tax := round((v_sub - v_disc) * coalesce(st."taxRate", 0));
   end if;
 
@@ -811,8 +907,8 @@ begin
           v_sub, v_disc, v_fee, v_tax, v_sub - v_disc + v_fee + v_tax)
   returning * into v_order;
 
-  insert into public.order_items (order_id, product_id, name, qty, price, addons)
-  select v_order.id, (l ->> 'product_id')::uuid, l ->> 'name', (l ->> 'qty')::integer,
+  insert into public.order_items (order_id, product_id, name, size, qty, price, addons)
+  select v_order.id, (l ->> 'product_id')::uuid, l ->> 'name', l ->> 'size', (l ->> 'qty')::integer,
          (l ->> 'price')::numeric, l -> 'addons'
     from jsonb_array_elements(lines) l;
 
@@ -1358,6 +1454,33 @@ begin
     end if;
   end loop;
 end $$;
+
+-- ---------------------------------------------------------------------
+-- 14b. IMAGE UPLOADS — public "brand-assets" bucket, staff-only uploads
+-- ---------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('brand-assets', 'brand-assets', true, 5242880,
+        array['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml',
+              'image/x-icon', 'image/vnd.microsoft.icon'])
+on conflict (id) do update
+  set public = true, file_size_limit = excluded.file_size_limit,
+      allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "brand-assets: staff upload" on storage.objects;
+create policy "brand-assets: staff upload" on storage.objects for insert to authenticated
+  with check (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())));
+-- Staff can see the files (needed to create links); customers just open
+-- the public image links, so there is no public "list files" rule.
+drop policy if exists "brand-assets: staff read" on storage.objects;
+create policy "brand-assets: staff read" on storage.objects for select to authenticated
+  using (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())));
+drop policy if exists "brand-assets: staff update" on storage.objects;
+create policy "brand-assets: staff update" on storage.objects for update to authenticated
+  using (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())))
+  with check (bucket_id = 'brand-assets' and public.is_staff((select auth.uid())));
+drop policy if exists "brand-assets: admin delete" on storage.objects;
+create policy "brand-assets: admin delete" on storage.objects for delete to authenticated
+  using (bucket_id = 'brand-assets' and public.is_admin((select auth.uid())));
 
 -- =====================================================================
 -- 15. BACKFILL — anyone who signed up before this file was run
